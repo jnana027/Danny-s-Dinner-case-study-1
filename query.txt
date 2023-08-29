@@ -1,0 +1,107 @@
+About Us:
+Danny seriously loves Japanese food so in the beginning of 2021, he decides to embark upon a risky venture and opens up a cute little restaurant that sells his 3 favorite foods: sushi, curry and ramen.
+Danny’s Diner is in need of your assistance to help the restaurant stay afloat - the restaurant has captured some very basic data from their few months of operation but have no idea how to use their data to help them run the business.
+
+Problem statement:
+Danny wants to use the data to answer a few simple questions about his customers, especially about their visiting patterns, how much money they’ve spent and also which menu items are their favorite. Having this deeper connection with his customers will help him deliver a better and more personalized experience for his loyal customers.
+He plans on using these insights to help him decide whether he should expand the existing customer loyalty program - additionally he needs help to generate some basic datasets so his team can easily inspect the data without needing to use SQL.
+Danny has provided you with a sample of his overall customer data due to privacy issues - but he hopes that these examples are enough for you to write fully functioning SQL queries to help him answer his questions.
+
+
+1.What is the total amount each customer spent at the restaurant ?
+select
+  s.customer_id,sum(m.price) as Total_amount
+  from sales as s inner join menu as m on  
+   s.product_id=m.product_id
+  group by  s.customer_id;
+
+
+2. How many days has each customer visited the restaurant?
+select 
+  customer_id,
+  count( distinct order_date) as count_visited_date 
+  from sales group by customer_id
+
+3. What was the first item from the menu purchased by each customer?
+with c as
+  (select 
+  customer_id,order_date,m.product_id,m.product_name,
+  min(order_date) over(partition by customer_id) as
+  min_date 
+  from sales as s inner join menu as m on s.product_id=m.product_id)
+  select customer_id,product_name from c where 
+order_date= min_date
+  group by customer_id,product_name
+
+4. What is the most purchased item on the menu and how many times was it purchased by all customers?
+select 
+s.product_id,product_name,price,
+count(s.product_id) total_purchase 
+from sales s inner join menu m
+on s.product_id=m.product_id 
+group by s.product_id,product_name,price
+
+
+5. Which item was the most popular for each customer?
+with cte as
+(select s.customer_id,m.product_name,count(*) total
+from sales as s inner join menu as m on s.product_id=m.product_id
+group by customer_id,product_name)
+,final as
+(select customer_id,product_name,total,
+rank() over(partition by customer_id order by total desc )as ranking from cte)
+select * from final where ranking=1;
+
+
+6.Which item was purchased first by the customer after they became a member
+with final as
+(selects.* ,m.customer_id as custid,m.join_date,
+rank() over(partition by s.customer_id order by order_date) as ranking,e.product_name
+from sales as s left join members as m on s.customer_id=m.customer_id
+join menu as e on s.product_id=e.product_id
+where s.order_date>=m.join_date)
+select customer_id,product_name,ranking from final where ranking=1
+
+7.Which item was purchased just before the customer became a member
+with cte as
+(select
+s.* ,m.customer_id as custid,m.join_date,
+rank() over(partition by s.customer_id order by order_date) as ranking,
+e.product_name
+from sales as s left join members as m on s.customer_id=m.customer_id
+join menu as e on s.product_id=e.product_id
+where s.order_date<m.join_date)
+
+select customer_id,product_name,ranking from cte where ranking=1
+
+
+8. What is the total items and amount spent for each member before they became a member
+with cte as
+(select s.customer_id,s.order_date,m.join_date,e.price ,e.product_name
+from sales as s left join members as m on s.customer_id=m.customer_id
+join menu as e on s.product_id=e.product_id
+where s.order_date<m.join_date)
+select customer_id,sum(price) as price,count(distinct product_name)as count_pro_name from cte group by customer_id
+
+9. f each $1 spent equates to 10 points and sushi has a 2x points multiplier - how many points would each customer have?
+with cte as
+(select s.customer_id,s.order_date,e.product_name,e.price,
+case when product_name='suchi' then 2*e.price else e.price end as newprice
+from sales as s 
+inner join menu as e on s.product_id=e.product_id)
+select customer_id,sum(newprice)*10 as total_price from cte group by customer_id
+
+10.In the first week after a customer joins the program (including their join date) they earn 2x points on all items, not just sushi - how many points do customer A and B have at the end of January?
+
+with cte as
+(select s.customer_id,s.order_date,e.product_name,e.price,
+case when product_name='suchi' then 2*e.price
+when s.order_date between m.join_date and  m.join_date then 2*e.price
+else e.price end as newprice
+from sales as s 
+inner join menu as e on s.product_id=e.product_id
+ join members as m on s.customer_id=m.customer_id
+ where s.order_date<='2021-01-31')
+select customer_id,sum(newprice)*10 as total_price from cte group by customer_id
+
+
